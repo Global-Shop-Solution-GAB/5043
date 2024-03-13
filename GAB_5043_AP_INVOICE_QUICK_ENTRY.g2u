@@ -1,0 +1,238 @@
+Program.Sub.ScreenSU.Start
+Gui.frmUpload..Create
+Gui.frmUpload..Caption("AP Invoice Quick Entry")
+Gui.frmUpload..Size(4500,2715)
+Gui.frmUpload..MinX(0)
+Gui.frmUpload..MinY(0)
+Gui.frmUpload..Position(0,0)
+Gui.frmUpload..BackColor(-2147483633)
+Gui.frmUpload..MaxButton(False)
+Gui.frmUpload..MinButton(False)
+Gui.frmUpload..MousePointer(0)
+Gui.frmUpload..Event(UnLoad,Form_UnLoad)
+Gui.frmUpload.cmdUpload.Create(Button)
+Gui.frmUpload.cmdUpload.Size(3900,450)
+Gui.frmUpload.cmdUpload.Position(195,1605)
+Gui.frmUpload.cmdUpload.Caption("Select Excel File")
+Gui.frmUpload.cmdUpload.Event(Click,cmdUpload_Click)
+Gui.frmUpload.lbl1.Create(Label,"Post Date :",True,945,255,0,195,315,True,0,"Arial",8,-2147483633,0)
+Gui.frmUpload.lbl2.Create(Label,"Vendor :",True,885,255,0,195,735,True,0,"Arial",8,-2147483633,0)
+Gui.frmUpload.lbl3.Create(Label,"Invoice :",True,840,255,0,210,1185,True,0,"Arial",8,-2147483633,0)
+Gui.frmUpload.dtPost.Create(DatePicker)
+Gui.frmUpload.dtPost.Size(1185,285)
+Gui.frmUpload.dtPost.Position(1155,255)
+Gui.frmUpload.txtVendor.Create(TextBox,"",True,1215,300,0,1155,675,True,0,"Arial",8,-2147483643,1)
+Gui.frmUpload.txtInvoice.Create(TextBox,"",True,1665,300,0,1155,1125,True,0,"Arial",8,-2147483643,1)
+Gui.frmUpload.txtInvoice.MaxLength(15)
+Gui.frmUpload.cmdBrowse.Create(Button)
+Gui.frmUpload.cmdBrowse.Size(360,315)
+Gui.frmUpload.cmdBrowse.Position(2445,660)
+Gui.frmUpload.cmdBrowse.Caption("^")
+Gui.frmUpload.cmdBrowse.Event(Click,cmdBrowse_Click)
+Gui.frmUpload.lbStatus.Create(Label,"Processing....",False,2460,255,0,1005,1770,True,0,"Arial",8,-2147483633,0)
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+V.Local.sIcon.Declare
+
+F.Intrinsic.String.Build("{0}\ART\gss2.ico",V.Caller.GlobalDir,V.Local.sIcon)
+Gui.frmUpload..Icon(V.Local.sIcon)
+
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN, V.Ambient.PUser, V.Ambient.PPass)
+F.Data.Dictionary.CreateFromSQL("dicVendor","conx","select vendor, vendor from v_vendor_master where vendor <> '' order by vendor")
+Gui.frmUpload.txtVendor.AddAutoCompleteItem("dicVendor","Dictionary")
+F.Data.Dictionary.Close("dicVendor")
+
+F.Data.DataTable.CreateFromSQL("dtGL","conx","select gl_account as GL, descr as Description from v_gl_master",True)
+
+Gui.frmUpload..Show
+Program.Sub.Main.End
+
+Program.Sub.Form_UnLoad.Start
+F.Data.DataTable.Close("dtGL")
+F.ODBC.Connection!conx.Close
+F.Intrinsic.Control.End
+
+Program.Sub.Form_UnLoad.End
+
+Program.Sub.cmdUpload_Click.Start
+V.Local.bNumeric.Declare
+V.Local.bUpload.Declare(Boolean,True)
+V.Local.fAmount.Declare
+V.Local.fInvoice.Declare
+V.Local.fTotal.Declare
+V.Local.i1.Declare
+V.Local.iCheck.Declare
+V.Local.iLen.Declare
+V.Local.iLine.Declare
+V.Local.iRow.Declare
+V.Local.iRowCnt.Declare
+V.Local.iTRow.Declare
+V.Local.sAmount.Declare
+V.Local.sDesc.Declare
+V.Local.sFile.Declare
+V.Local.sFileName.Declare
+V.Local.sFileRow.Declare
+V.Local.sFilter.Declare
+V.Local.sGLAccount.Declare
+V.Local.sInvoice.Declare
+V.Local.sInvoiceDt.Declare
+V.Local.sRet.Declare
+V.Local.sRow.Declare
+V.Local.sSQL.Declare
+V.Local.sSuffix.Declare
+V.Local.sTemp.Declare
+V.Local.sVendor.Declare
+V.Local.sWO.Declare
+
+V.Local.sInvoice.Set(V.Screen.frmUpload!txtInvoice.Text)
+V.Local.sVendor.Set(V.Screen.frmUpload!txtVendor.Text)
+
+F.Intrinsic.Control.If(V.Local.sVendor.Trim,=,"")
+	F.Intrinsic.UI.Msgbox("Please select a vendor")
+F.Intrinsic.Control.Else
+	'Validate vendor
+	F.Intrinsic.String.Build("select vendor from v_vendor_master where vendor = '{0}'",V.Local.sVendor.Trim,V.Local.sSQL)
+	F.ODBC.Connection!conx.OpenLocalRecordsetRO("rst",V.Local.sSQL)
+	F.Intrinsic.Control.If(V.ODBC.conx!rst.EOF,=,True)
+		Function.Intrinsic.UI.Msgbox("Invalid vendor")
+	F.Intrinsic.Control.Else
+		F.Intrinsic.Control.If(V.Local.sInvoice.Trim,=,"")
+			F.Intrinsic.UI.Msgbox("Please enter an invoice number")
+		F.Intrinsic.Control.Else
+			'Get the excel upload file
+			F.Intrinsic.UI.ShowOpenFileDialog("","*.xlsx|","",V.Local.sFileName)
+			
+			F.Intrinsic.Control.If(V.Local.sFileName,<>,"***CANCEL***")
+				Gui.frmUpload.cmdUpload.Visible(False)
+				gui.frmUpload.lbStatus.Visible(True)
+			
+				F.Automation.MSExcel.CreateAppObject("MSExcel")
+				F.Automation.MSExcel.OpenWorkbook("MSExcel","UPL",V.Local.sFileName)
+				
+				F.Automation.MSExcel.OpenWorksheet("UPL","UPLSheet",1)
+				F.Automation.MSExcel.RowCount("UPLSheet",V.Local.iTRow)
+				
+				F.Intrinsic.Control.For(V.Local.iRow,1,V.Local.iTRow,1)
+					F.Intrinsic.Math.Add(V.Local.iRow,1,V.Local.i1)
+					F.Automation.MSExcel.ReadRow("UPLSheet",V.Local.iRow,1,10,V.Local.sRow)
+					F.Intrinsic.String.Split(V.Local.sRow,"*!*",V.Local.sRow)
+					
+					'Check if GL account is valid
+					F.Intrinsic.String.Build("GL ='{0}'",V.Local.sRow(0).Trim,V.Local.sFilter)
+					F.Data.DataTable.Select("dtGL",V.Local.sFilter,V.Local.sRet)
+					F.Intrinsic.Control.If(V.Local.sRet,=,"***NORETURN***")
+						F.Intrinsic.String.Build("GL account {0} in row {1} is not valid. File processing is cancelled.",V.Local.sRow(0),V.Local.i1,V.Local.sTemp)
+						F.Intrinsic.UI.Msgbox(V.Local.sTemp)
+						V.Local.bUpload.Set(False)
+						gui.frmUpload.lbStatus.Visible(False)
+						Gui.frmUpload.cmdUpload.Visible(True)
+						F.Intrinsic.Control.ExitFor(V.Local.iRow)
+					F.Intrinsic.Control.Else
+						F.Intrinsic.String.RPad(V.Local.sVendor," ",6,v.local.sVendor)
+						F.Intrinsic.String.RPad(V.Local.sInvoice," ",15,v.local.sInvoice)
+				
+						F.Intrinsic.String.Format(v.Screen.frmUpload!dtPost.Value,"MMDDYY",v.local.sInvoiceDt)
+						
+						'GL Account
+						F.Intrinsic.String.RPad(V.Local.sRow(0).Trim," ",15,V.Local.sGLAccount)
+						
+						'WO
+						F.Intrinsic.String.RPad(V.Local.sRow(3)," ",6,V.Local.sWO)
+						F.Intrinsic.String.RPad(V.Local.sRow(4)," ",3,V.Local.sSuffix)
+						F.Intrinsic.Control.If(V.Local.sRow(4).Trim,<>,"")
+							F.Intrinsic.String.Build("{0}-{1}",V.Local.sWO,V.Local.sSuffix,V.Local.sWO)
+						F.Intrinsic.Control.EndIf
+						
+						F.Intrinsic.Math.ConvertToFloat(V.Local.sRow(2),V.Local.fAmount)
+						F.Intrinsic.String.Format(V.Local.fAmount,"0.00",V.Local.sAmount)
+						
+						F.Intrinsic.String.Left(V.Local.sRow(1),30,V.Local.sDesc)
+						
+						F.Intrinsic.String.Concat(v.Local.sInvoiceDt,"*!*",v.local.sVendor,"*!*",v.local.sInvoice,"*!*",v.local.sInvoiceDt,V.local.sFileRow)
+						F.Intrinsic.String.Concat(V.local.sFileRow,"*!*",v.local.sAmount,"*!*",v.local.sGLAccount,"*!*",v.Local.sWO,"*!*","","*!*",v.Local.sRow(5),"*!*",v.Local.sDesc,"*!*",V.local.sFileRow)
+						
+						F.Intrinsic.Control.If(V.Local.sFile.Trim,=,"")
+							V.Local.sFile.Set(V.Local.sFileRow)
+						F.Intrinsic.Control.Else
+							F.Intrinsic.String.Concat(V.Local.sFile,V.Ambient.NewLine,V.Local.sFileRow,V.Local.sFile)
+						F.Intrinsic.Control.EndIf
+					F.Intrinsic.Control.EndIf
+				F.Intrinsic.Control.Next(V.Local.iRow)
+				F.Automation.MSExcel.DestroyAllObjects("MSExcel","UPL","UPLSheet")
+				
+				F.Intrinsic.Control.If(V.Local.bUpload)
+					F.Intrinsic.String.Concat(V.caller.FilesDir,"\APBatch_Upload.TXT",V.Local.sFileName)
+					F.Intrinsic.File.String2File(V.Local.sFileName,V.Local.sFile)
+					F.Intrinsic.Task.LaunchGSSSync("AP043UP1","-c","")
+					gui.frmUpload.lbStatus.Caption("Complete")
+					F.Intrinsic.Control.CallSub(form_unload)
+				F.Intrinsic.Control.EndIf
+			F.Intrinsic.Control.EndIf
+		F.Intrinsic.Control.EndIf
+		
+	F.Intrinsic.Control.EndIf
+	F.ODBC.conx!rst.Close
+F.Intrinsic.Control.EndIf
+
+
+'		F.Intrinsic.Control.If(V.Local.sRow(0).Trim,<>,"")
+'			'Ensuring only 30 chars for description
+'			F.Intrinsic.String.Len(V.Local.sRow(1).Trim,V.Local.iLen)
+'			V.Local.sDesc.Set(V.Local.sRow(1))
+'			'If length is greater than 30, look for the last space within 30 chars and separate the first 30 chars
+'			F.Intrinsic.Control.If(V.Local.iLen,>,30)
+'				F.Intrinsic.String.Mid(V.Local.sDesc,29,1,V.Local.sTemp)
+'				V.Local.iCheck.Set(29)
+'				F.Intrinsic.Control.If(V.Local.sTemp,<>," ")
+'					F.Intrinsic.Control.DoUntil(V.Local.sTemp,=," ")
+'						F.Intrinsic.Math.Sub(V.Local.iCheck,1,V.Local.iCheck)
+'						F.Intrinsic.String.Mid(V.Local.sDesc,V.Local.iCheck,1,V.Local.sTemp)
+'					F.Intrinsic.Control.Loop
+'				F.Intrinsic.Control.EndIf
+'				F.Intrinsic.String.Left(V.Local.sDesc,V.Local.iCheck,V.Local.sDesc1)
+'				F.Intrinsic.Math.Add(V.Local.iCheck,1,V.Local.iCheck)
+'				F.Intrinsic.String.Mid(V.Local.sDesc,V.Local.iCheck,V.Local.sDesc2)
+'				F.Intrinsic.String.RPad(V.Local.sDesc1," ",30,V.Local.sTemp)
+'			F.Intrinsic.Control.Else
+'				F.Intrinsic.String.RPad(V.Local.sDesc," ",30,V.Local.sTemp)
+'			F.Intrinsic.Control.EndIf
+'			
+'			'GL account
+'			F.Intrinsic.String.RPad(V.Local.sRow(0)," ",15,V.Local.sGLAccount)
+'			'Checking amount if it's debit/credit
+'			F.Intrinsic.Math.ConvertToFloat(V.Local.sRow(2),V.Local.fAmount)
+'			F.Intrinsic.Math.Add(V.Local.fTotal,V.Local.fAmount,V.Local.fTotal)
+''			F.Intrinsic.Control.If(V.Local.fAmount,>,0)
+''				F.Intrinsic.String.Format(V.Local.fAmount,"0.00",V.Local.sDebit)
+''				V.Local.sCredit.Set("0.00")
+''			F.Intrinsic.Control.Else
+''				V.Local.sDebit.Set("0.00")
+''				F.Intrinsic.String.Format(V.Local.fAmount,"0.00",V.Local.sCredit)
+''			F.Intrinsic.Control.EndIf
+''			F.Intrinsic.String.Build("{0}|~||~|{1}|~|{2}|~||~|{3}|~|{4}|~|N|~|{5}|~|{6}|~||~||~||~|",V.Local.iLine,V.Local.sGLAccount,V.Local.sTemp,V.Local.sDebit,V.Local.sCredit,V.Local.sUser,V.Local.sBatch,V.Local.sBDF)
+'			F.Intrinsic.String.Build("{0}|~|  |~|{1}|~|{2}|~|{3}|~|      |~|   |~|      |~|",V.Local.iLine,V.Local.sGLAccount,V.Local.sRow(2),V.Local.sRow(1),V.Ambient.NewLine,V.Local.sBDF)
+'			F.Intrinsic.BDF.WriteRow("Clone",V.Local.sBDF)
+'			F.Intrinsic.Math.Add(V.Local.iLine,1,V.Local.iLine)
+'		F.Intrinsic.Control.EndIf
+Program.Sub.cmdUpload_Click.End
+
+Program.Sub.cmdBrowse_Click.Start
+V.Local.sRet.Declare(String)
+
+Function.Intrinsic.UI.Browser(300,"",Variable.Local.sRet)
+
+F.Intrinsic.Control.If(V.Local.sRet,"=","***CANCEL***")
+	F.Intrinsic.UI.Msgbox("No Record was selected")
+F.Intrinsic.Control.Else
+	F.Intrinsic.String.Split(V.Local.sRet,"*!*",V.Local.sRet)
+	gui.frmUpload.txtVendor.text(V.Local.sRet(0))
+F.Intrinsic.Control.EndIf
+Program.Sub.cmdBrowse_Click.End
+
+Program.Sub.Comments.Start
+${$0$}$Excel Import of AP Invoice Multiple Accounts$}$MHERTANTO$}$4/4/2018 4:23:17 PM$}$False
+Program.Sub.Comments.End
